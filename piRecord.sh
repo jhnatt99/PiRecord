@@ -1,4 +1,11 @@
 #!/bin/bash
+###############################################################################
+# piRecord.sh - bash script for running PiRecord
+# Author: John Hnatt
+# Copyright 2019. All Rights Reserved.
+# Version History:
+#   mm/dd/yy    jhnatt    fix directory name
+###############################################################################
 
 myPid=0
 usage()
@@ -19,7 +26,7 @@ areyousure()
 
 start()
 {
-	cd /home/pi/piRecord
+	cd /home/pi/PiRecord
 	rm -f .myfifo
 	python ./piRecord.py &
 	echo $! >.mypid

@@ -3,6 +3,7 @@
 # Author: John Hnatt
 # Copyright 2019. All Rights Reserved.
 #   11/24/19    jhnatt    original
+#   11/25/19    jhnatt    sleep on idle state, 
 ###############################################################################
 
 # TODO: describe the hardware (i.e. user interface module used)
@@ -22,13 +23,12 @@ import errno
 # TODO: make this configurable 
 DEBOUNCE_TIME = 0.020
 
-IDLE_SECONDS = 600.000  #10 minutes
+IDLE_SECONDS = 300.000  #5 minutes idle before sleeping
 
 # Recorder states
 IDLE_STATE = 0
-READY_STATE = 1
-REC_STATE = 2
-ERROR_STATE = 3
+BUSY_STATE = 1
+ERROR_STATE = 2
 
 # Operation Modes
 STARTUP_MODE = 0 
@@ -62,6 +62,7 @@ running = True
 state = IDLE_STATE
 run_mode = STARTUP_MODE
 submode = 0
+sleeping = False
 
 # fifo used to allow commands to be sent from command line.  
 # TODO (currently not working)
@@ -220,9 +221,9 @@ signal.signal(signal.SIGUSR2, process_sigusr)
 #   0
 ###############################################################################
 def display_submode(mode,submode):
-   lcd.set_cursor(0,0)
-   lcd.message(submode_disp_list[mode][submode])
-   return 0
+    lcd.set_cursor(0,0)
+    lcd.message(submode_disp_list[mode][submode])
+    return 0
 
 ###############################################################################
 # Function Name:
@@ -236,10 +237,10 @@ def display_submode(mode,submode):
 #   0
 ###############################################################################
 def display_mode(mode,submode):
-   lcd.set_cursor(13,0)
-   lcd.message(mode_disp_list_short[mode])
-   display_submode(mode,submode)
-   return 0
+    lcd.set_cursor(13,0)
+    lcd.message(mode_disp_list_short[mode])
+    display_submode(mode,submode)
+    return 0
 
 ###############################################################################
 # Function Name:
@@ -398,6 +399,7 @@ def any_switch_pressed():
 #   the old if not)
 ###############################################################################
 def do_record_mode(submode):
+    global state
 
     # initialize the new submode return value to the current submode.  If no 
     # change takes place then we will remain in the current submode.
@@ -418,6 +420,7 @@ def do_record_mode(submode):
             logging.info("recording started")
             if piRecordEngine.start_record():
                 new_submode = REC_IN_PROG
+                state = BUSY_STATE
                 display_submode(RECORD_MODE,REC_IN_PROG)
                 lcd.set_cursor(0,1)
                 lcd.message("Any Btn to stop ")
@@ -426,6 +429,7 @@ def do_record_mode(submode):
                 # stop recording, and set state to ERROR .
                 piRecordEngine.stop_record()
                 new_submode = REC_ERROR
+                state = ERROR_STATE
                 display_submode(RECORD_MODE,REC_ERROR)
                 lcd.set_cursor(0,1)
                 lcd.message("Any Btn to clear")
@@ -437,6 +441,7 @@ def do_record_mode(submode):
             logging.info("recording stopped")
             piRecordEngine.stop_record()
             new_submode = REC_STOPPED
+            state = IDLE_STATE
             display_submode(RECORD_MODE,REC_STOPPED)
             lcd.set_cursor(0,1)
             lcd.message("Stopped.        ")
@@ -447,6 +452,7 @@ def do_record_mode(submode):
         if any_switch_pressed():
             logging.info("rec err cleared")
             new_submode = REC_STOPPED
+            STATE = IDLE_STATE
             display_submode(RECORD_MODE,REC_STOPPED)
             lcd.set_cursor(0,1)
             lcd.message("Cleared.        ")
@@ -469,6 +475,7 @@ def do_playback_mode(submode):
     #TODO: add play logic
     return new_submode
 
+# global config item count
 cfgItemCnt = 0
 
 ###############################################################################
@@ -560,6 +567,42 @@ def do_utility_mode(submode):
 
 ###############################################################################
 # Function Name:
+#   put_to_sleep()
+# Description:
+#   puts the recorder to sleep by blanking the screen
+# Parameters:
+#   none
+# Return value: 
+#   0
+###############################################################################
+def put_to_sleep():
+    global sleeping
+    sleeping = True
+    lcd.set_color(0,0,0)
+    logging.log(LOG_DBG, "recorder put to sleep.")
+    print "Recorder put to sleep."
+    return 0
+
+###############################################################################
+# Function Name:
+#   wake_up()
+# Description:
+#   wakes up the recorder by unblanking the screen
+# Parameters:
+#   none
+# Return value: 
+#   0
+###############################################################################
+def wake_up():
+    global sleeping
+    sleeping = False
+    lcd.set_color(1,0,0)
+    logging.log(LOG_DBG, "recorder awakened.")
+    print "Recorder awakened."
+    return 0
+
+###############################################################################
+# Function Name:
 #   __main__  
 # Description:
 #   The main loop for the PiRecord program
@@ -593,6 +636,8 @@ if __name__ == "__main__":
     change_mode_in_prog = False
     change_mode_pending = False
     change_mode_cnt = 0
+    idle_counter = 0
+    prev_state = IDLE_STATE
 
     # Create message pipe to command line /bash shell script
     # TODO: figure out how to get this to work
@@ -616,60 +661,82 @@ if __name__ == "__main__":
 
             check_switches()
 
-            #CHECK IF ENTERING CHANGE MODE:
-            #if SELECT button pressed, start 1 second counter, if down after one second
-            #then enter change mode procedure.
-            if switch_down[SEL_SW]:
-                if submode <= TOP_SUBMODE: #must be at top level of mode
-                    if switch_last[SEL_SW] == False:
-                        change_mode_pending = True
-                        change_mode_cnt = 0
-                    elif change_mode_in_prog == False:
-                        change_mode_cnt += 1
-                        if change_mode_cnt >= 1.000/DEBOUNCE_TIME:
+            #only perform switch functionality when recorder is awake
+            if sleeping == False:
+            
+                #CHECK IF ENTERING CHANGE MODE:
+                #if SELECT button pressed, start 1 second counter, if down after one second
+                #then enter change mode procedure.
+                if switch_down[SEL_SW]:
+                    if submode <= TOP_SUBMODE: #must be at top level of mode
+                        if switch_last[SEL_SW] == False:
+                            change_mode_pending = True
                             change_mode_cnt = 0
-                            change_mode_pending = False
-                            change_mode_in_prog = True
-                            select_mode = run_mode
-                            lcd.set_cursor(0,0)
-                            lcd.message("Sel Mode:    ")
+                        elif change_mode_in_prog == False:
+                            change_mode_cnt += 1
+                            if change_mode_cnt >= 1.000/DEBOUNCE_TIME:
+                                change_mode_cnt = 0
+                                change_mode_pending = False
+                                change_mode_in_prog = True
+                                select_mode = run_mode
+                                lcd.set_cursor(0,0)
+                                lcd.message("Sel Mode:    ")
+                                display_mode_selection(select_mode)
+                else: 
+                    #button up, cancel change mode pending
+                    if change_mode_pending == True:
+                        change_mode_pending = False
+                        change_mode_cnt = 0
+
+                #CHANGE MODE PROCESSING
+                #if we are in change mode, handle the up/down arrows and selection
+                #for changeing the mode
+                if change_mode_in_prog == True:
+                    if  switch_pressed(UP_SW):
+                            select_mode = increment_mode(select_mode)
                             display_mode_selection(select_mode)
-            else: 
-                #button up, cancel change mode pending
-                if change_mode_pending == True:
-                    change_mode_pending = False
-                    change_mode_cnt = 0
+                    if switch_pressed(DOWN_SW):
+                            select_mode = decrement_mode(select_mode)
+                            display_mode_selection(select_mode)
+                    if switch_pressed(SEL_SW):
+                            lcd.clear()
+                            set_mode(select_mode)
+                            change_mode_in_prog = False
 
-            #CHANGE MODE PROCESSING
-            #if we are in change mode, handle the up/down arrows and selection
-            #for changeing the mode
-            if change_mode_in_prog == True:
-                if  switch_pressed(UP_SW):
-                        select_mode = increment_mode(select_mode)
-                        display_mode_selection(select_mode)
-                if switch_pressed(DOWN_SW):
-                        select_mode = decrement_mode(select_mode)
-                        display_mode_selection(select_mode)
-                if switch_pressed(SEL_SW):
-                        lcd.clear()
-                        set_mode(select_mode)
-                        change_mode_in_prog = False
-
-            # if not in change mode, call the mode handler for the current operation mode
-            else:
-                if run_mode == RECORD_MODE:
-                    submode = do_record_mode(submode)
-                elif run_mode == PLAYBACK_MODE:
-                    submode = do_playback_mode(submode)
-                elif run_mode == CONFIG_MODE:
-                    submode = do_config_mode(submode)
-                elif run_mode == UTIL_MODE:
-                    submode = do_utility_mode(submode)
+                # if not in change mode, call the mode handler for the current operation mode
                 else:
-                    logging.error("Invalid Mode")
-                    lcd.clear()
-                    lcd.message("Invalid Mode!")
-                    print "Invalid Mode = ", mode
+                    if run_mode == RECORD_MODE:
+                        submode = do_record_mode(submode)
+                    elif run_mode == PLAYBACK_MODE:
+                        submode = do_playback_mode(submode)
+                    elif run_mode == CONFIG_MODE:
+                        submode = do_config_mode(submode)
+                    elif run_mode == UTIL_MODE:
+                        submode = do_utility_mode(submode)
+                    else:
+                        logging.error("Invalid Mode")
+                        lcd.clear()
+                        lcd.message("Invalid Mode!")
+                        print "Invalid Mode = ", mode
+            # endif not sleeping
+
+            # do idle state sleep/wakeup stuff
+            if state == IDLE_STATE:
+                if any_switch_pressed():
+                    idle_counter = 0
+                    if sleeping:
+                        wake_up()
+                else:
+                    if sleeping == False:
+                        idle_counter += 1;
+                        if idle_counter >= IDLE_SECONDS/DEBOUNCE_TIME:
+                            put_to_sleep()
+                            idle_counter = 0
+            else:
+                if sleeping:
+                    wake_up()
+                idle_counter = 0
+            prev_state = state
 
     except KeyboardInterrupt: 
     # If CTRL+C is pressed, exit cleanly

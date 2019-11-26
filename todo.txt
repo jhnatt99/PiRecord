@@ -1,0 +1,18 @@
+PiRecord TODO List:
+===================
+Get to work with Python 3
+
+Add power/reset switch
+
+Add status LEDs
+
+Playback support
+    - playback last file
+    - add file selection
+
+Config support
+    - show current configuration
+    - allow config to be modified
+
+Utility 
+    - show available space for recordings 
