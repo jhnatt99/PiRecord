@@ -4,6 +4,7 @@
 # Copyright 2019. All Rights Reserved.
 # Version History:
 #   11/24/19  jhnatt    original
+#   11/26/19  jhnatt    modify for Python 3
 ###############################################################################
 
 import multiprocessing
@@ -44,14 +45,14 @@ def start_record():
     global curr_filename
     global recording
     status = 0
-    print "\n**NEW RECORDING**"
-    print "start_record() called, recording = ", recording
+    print ("\n**NEW RECORDING**")
+    print ("start_record() called, recording = ", recording)
     if recording == False:
         curr_filename = piRecordUtils.getNextFilename()
         piRecordUtils.setCurrentFilename(curr_filename)
         if status == 0:  #no error
             pQueue.put(REQ_REC_START)
-            print "REQ_REC_START sent."
+            print ("REQ_REC_START sent.")
             recording = True
     return status == 0
 
@@ -70,12 +71,12 @@ def stop_record():
     global curr_filename
     global recording
     status = 0
-    print "stop_record() called, recording = ", recording
+    print ("stop_record() called, recording = "), recording
     if recording == True:
         piRecordUtils.setCurrentFilename("$")
         curr_filename = "$"
         pQueue.put(REQ_REC_STOP)
-        print "REQ_REC_STOP sent" 
+        print ("REQ_REC_STOP sent" )
         recording = False
     return status == 0
 
@@ -123,7 +124,7 @@ def piRecordEngine():
 
         # handle start record requests:       
         if req == REQ_REC_START:
-            print "REQ_REC_START received, calling do_record_start"
+            print ("REQ_REC_START received, calling do_record_start")
             curr_fd = handle_record_start_req()
             if recPCM == None:
                 recPCM = init_record_input()
@@ -132,7 +133,7 @@ def piRecordEngine():
 
         # hanlde stop record requests:
         elif req == REQ_REC_STOP:
-            print "REQ_STOP received, calling do_record_stop"
+            print ("REQ_STOP received, calling do_record_stop")
             handle_record_stop_req(curr_fd)
             rec_in_progress = False
 
@@ -145,9 +146,9 @@ def piRecordEngine():
                 cnt = cnt + 1
                 if cnt >= 500:
                     cnt = 0
-                    print "....."
+                    print (".....")
             else:
-                print "Recording has stopped..."
+                print ("Recording has stopped...")
     
     return 0
 
@@ -188,7 +189,7 @@ def init_record_input():
 ###############################################################################
 def handle_record_start_req():
     curr_fn = piRecordUtils.getCurrentFilename()
-    print "handle_record_start_req: open file", curr_fn, "here..."
+    print ("handle_record_start_req: open file", curr_fn, "here...")
     fd = wave.open(curr_fn, 'wb')
     fd.setnchannels(piRecordConf.recChannels)
     fd.setsampwidth(piRecordConf.recSampleWidth)
@@ -199,15 +200,15 @@ def handle_record_start_req():
 # Function Name:
 #   handle_record_stop_req
 # Description:
-#   handles the record stop request by writing null char and closing the file
+#   handles the record stop request by writing null and closing the file
 # Parameters:
 #   fd - file descriptor of the currenly open wave file
 # Return value: 
 #   0
 ###############################################################################
 def handle_record_stop_req(fd):
-    print "handle_record_stop_req: close file here..."
-    fd.writeframes('')
+    print ("handle_record_stop_req: close file here...")
+    fd.writeframes(''.encode())
     fd.close()
     return 0
 

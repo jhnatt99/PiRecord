@@ -4,7 +4,8 @@
 # Author: John Hnatt
 # Copyright 2019. All Rights Reserved.
 # Version History:
-#   mm/dd/yy    jhnatt    fix directory name
+#   11/25/19    jhnatt    fix directory name
+#   11/26/19    jhnatt    support Python 3 (only)
 ###############################################################################
 
 myPid=0
@@ -15,7 +16,7 @@ usage()
 
 is_running()
 {
-        ps -f -C "python" | grep -q 'piRecord.py'
+        ps -f -C "python3" | grep -q 'piRecord.py'
 }
 
 areyousure()
@@ -28,7 +29,7 @@ start()
 {
 	cd /home/pi/PiRecord
 	rm -f .myfifo
-	python ./piRecord.py &
+	python3 ./piRecord.py &
 	echo $! >.mypid
 	echo "piRecord runing, pid = $!"
 }

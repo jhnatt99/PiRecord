@@ -3,6 +3,7 @@
 # Author: John Hnatt
 # Copyright 2019. All Rights Reserved.
 #   11/24/19    jhnatt    original
+#   11/26/19    jhnatt    modify for Python 3
 ###############################################################################
 
 import platform
@@ -12,7 +13,7 @@ if platform.system() == 'Linux':
     #TODO: support for other platforms
 
 import logging
-import ConfigParser
+import configparser
 
 # Constants
 UI_PROTO = 0
@@ -50,7 +51,7 @@ logFormat = '%(asctime)s %(levelname)s:  %(message)s'
 logging.basicConfig(filename=logFile,format=logFormat,level=logLevel)
 
 #Create configuration parser object
-recConfig = ConfigParser.RawConfigParser()
+recConfig = configparser.RawConfigParser()
 
 ###############################################################################
 # Function Name:
@@ -63,14 +64,14 @@ recConfig = ConfigParser.RawConfigParser()
 #   0
 ###############################################################################
 def printConfig():
-    print "Current Recording Config:"
-    print "  recDevice = ", recDevice
-    print "  recChannels = ", recChannels
-    print "  recRate = ", recRate
-    print "  recFormat = ", recFormat
-    print "  recPeriodSize = ", recPeriodSize
-    print "  recSampleWidth = ", recSampleWidth
-    print "to change a setting, edit piRecord.cfg and restart piRecord"
+    print ("Current Recording Config:")
+    print ("  recDevice = ", recDevice)
+    print ("  recChannels = ", recChannels)
+    print ("  recRate = ", recRate)
+    print ("  recFormat = ", recFormat)
+    print ("  recPeriodSize = ", recPeriodSize)
+    print ("  recSampleWidth = ", recSampleWidth)
+    print ("to change a setting, edit piRecord.cfg and restart piRecord")
     return 0
 
 ###############################################################################
@@ -148,9 +149,9 @@ def getRecDevConfig():
 if __name__ == "__main__":
     getRecDevConfig()
     printConfig()
-    print "\nList of available record devices:"
+    print ("\nList of available record devices:")
     devList = alsaaudio.pcms(alsaaudio.PCM_CAPTURE)
     for dev in devList:
-        print "  ", dev
-    print "Record device in use = ", getRecDevice()
+        print ("  ", dev)
+    print ("Record device in use = ", getRecDevice())
 

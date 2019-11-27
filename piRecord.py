@@ -4,6 +4,7 @@
 # Copyright 2019. All Rights Reserved.
 #   11/24/19    jhnatt    original
 #   11/25/19    jhnatt    sleep on idle state, 
+#   11/26/19    jhnatt    modify for Python 3,  
 ###############################################################################
 
 # TODO: describe the hardware (i.e. user interface module used)
@@ -198,11 +199,11 @@ def process_command():
 def process_sigusr(signum,frame):
     #TODO: find use for signals.  For now just test.
     if (signum == signal.SIGUSR1):
-        print "SIGUSR1 received"
+        print ("SIGUSR1 received")
     elif (signum == signal.SIGUSR2):
-        print "SIGUSR2 received"
+        print ("SIGUSR2 received")
     else:
-        print "signal received: ", signum
+        print ("signal received: ", signum)
     return 0
 
 # register user signals
@@ -580,7 +581,7 @@ def put_to_sleep():
     sleeping = True
     lcd.set_color(0,0,0)
     logging.log(LOG_DBG, "recorder put to sleep.")
-    print "Recorder put to sleep."
+    print ("Recorder put to sleep.")
     return 0
 
 ###############################################################################
@@ -598,7 +599,7 @@ def wake_up():
     sleeping = False
     lcd.set_color(1,0,0)
     logging.log(LOG_DBG, "recorder awakened.")
-    print "Recorder awakened."
+    print ("Recorder awakened.")
     return 0
 
 ###############################################################################
@@ -617,8 +618,8 @@ if __name__ == "__main__":
     select_mode = STARTUP_MODE
 
     # display copyright info on terminal and LCD display
-    print "piRecord 0.1"
-    print "Copyright 2019 by John Hnatt.  All rights reserved"
+    print ("piRecord 0.1")
+    print ("Copyright 2019 by John Hnatt.  All rights reserved")
     logging.info(" ")
     logging.info("***** piRecord has started *****")    
 
@@ -717,7 +718,7 @@ if __name__ == "__main__":
                         logging.error("Invalid Mode")
                         lcd.clear()
                         lcd.message("Invalid Mode!")
-                        print "Invalid Mode = ", mode
+                        print ("Invalid Mode = ", mode)
             # endif not sleeping
 
             # do idle state sleep/wakeup stuff
