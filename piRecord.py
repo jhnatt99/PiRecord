@@ -5,6 +5,7 @@
 #   11/24/19    jhnatt    original
 #   11/25/19    jhnatt    sleep on idle state, 
 #   11/26/19    jhnatt    modify for Python 3,  
+#   11/27/19    jhnatt    configurable debounce and idle times
 ###############################################################################
 
 # TODO: describe the hardware (i.e. user interface module used)
@@ -19,12 +20,6 @@ import piRecordUtils
 import Adafruit_CharLCD as LCD    #library used to control the LCD module
 import os
 import errno
-
-# switch debounce time
-# TODO: make this configurable 
-DEBOUNCE_TIME = 0.020
-
-IDLE_SECONDS = 300.000  #5 minutes idle before sleeping
 
 # Recorder states
 IDLE_STATE = 0
@@ -51,6 +46,7 @@ REC_STOPPED=INIT_SUBMODE
 REC_STANDBY=TOP_SUBMODE
 REC_IN_PROG=REC_STANDBY+1
 REC_ERROR=REC_IN_PROG+1
+REC_AUDITION=REC_ERROR+1
 
 # config submodes
 CFG_START=INIT_SUBMODE
@@ -88,11 +84,11 @@ mode_disp_list = ["STARTUP         ",
 mode_disp_list_short = ["SUP", "REC", "PLY", "CFG", "UTL"]
 
 # 2 dimensional list for the submodes defined for each mode
-submode_disp_list = [["---         ", "            ", "             ", "            "], 
-                     ["---         ", "Standby...  ", "Rec in prog  ", "Rec Error   "], 
-                     ["---         ", "Sel file:   ", "Playing...   ", "Play Error  "], 
-                     ["---         ", "Sel item:   ", "Changing...  ", "Error       "],
-                     ["---         ", "sel utility ", "Running...   ", "Error       "]] 
+submode_disp_list = [["---         ", "            ", "             ", "            ", "            "], 
+                     ["---         ", "Standby...  ", "Rec in prog  ", "Rec Error   ", "Auditioning "], 
+                     ["---         ", "Sel file:   ", "Playing...   ", "Play Error  ", "            "], 
+                     ["---         ", "Sel item:   ", "Changing...  ", "Error       ", "            "],
+                     ["---         ", "sel utility ", "Running...   ", "Error       ", "            "]] 
 
 # switch indices
 SEL_SW = 0
@@ -434,6 +430,19 @@ def do_record_mode(submode):
                 display_submode(RECORD_MODE,REC_ERROR)
                 lcd.set_cursor(0,1)
                 lcd.message("Any Btn to clear")
+        # if the right switch is pressed while in standby, audition the last recording
+        if switch_pressed(LEFT_SW):
+            logging.info("auditioning last recording")
+            state = BUSY_STATE
+            new_submode = REC_AUDITION
+            display_submode(RECORD_MODE, REC_AUDITION)
+            lcd.set_cursor(0,1)
+            lcd.message("...             ")
+            piRecordEngine.audition(piRecordConf.auditionTime)  # note this sleep while audition in porgress 
+            new_submode = REC_STOPPED            
+            display_submode(RECORD_MODE,REC_STOPPED)
+            lcd.set_cursor(0,1)
+            lcd.message("Stopped.        ")
 
     # if submode is REC_IN_PROG, check if any switch was pressed and if so, 
     # stop the recording and change state to STOPPED 
@@ -633,7 +642,11 @@ if __name__ == "__main__":
     piRecordConf.getRecDevConfig()
     piRecordConf.printConfig()
 
-    #initialize local variables
+    # get configuration settings
+    debounce_time = piRecordConf.swDebounceTime;
+    idle_seconds = piRecordConf.idleSeconds;
+
+    # initialize local variables
     change_mode_in_prog = False
     change_mode_pending = False
     change_mode_cnt = 0
@@ -656,9 +669,9 @@ if __name__ == "__main__":
         # MAIN LOOP:
         while running:
 
-            cnt += DEBOUNCE_TIME
+            cnt += debounce_time
             test_cnt += 1
-            time.sleep(DEBOUNCE_TIME) # sleep to debounce
+            time.sleep(debounce_time) # sleep to debounce
 
             check_switches()
 
@@ -675,7 +688,7 @@ if __name__ == "__main__":
                             change_mode_cnt = 0
                         elif change_mode_in_prog == False:
                             change_mode_cnt += 1
-                            if change_mode_cnt >= 1.000/DEBOUNCE_TIME:
+                            if change_mode_cnt >= 1.000/debounce_time:
                                 change_mode_cnt = 0
                                 change_mode_pending = False
                                 change_mode_in_prog = True
@@ -730,7 +743,7 @@ if __name__ == "__main__":
                 else:
                     if sleeping == False:
                         idle_counter += 1;
-                        if idle_counter >= IDLE_SECONDS/DEBOUNCE_TIME:
+                        if idle_counter >= idle_seconds/debounce_time:
                             put_to_sleep()
                             idle_counter = 0
             else:

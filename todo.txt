@@ -1,13 +1,10 @@
 PiRecord TODO List:
 ===================
-Get to work with Python 3
-
 Add power/reset switch
 
 Add status LEDs
 
 Playback support
-    - playback last file
     - add file selection
 
 Config support
@@ -15,4 +12,19 @@ Config support
     - allow config to be modified
 
 Utility 
-    - show available space for recordings 
+    - show available space for recordings
+
+documentation
+    - document configuration
+      - which packages to install:
+          pyalsaaudio
+          libasound
+          pip
+          adafruit 2x16 LCD library
+      - documentation on LCD display (pinout, apis)
+      - file modifications
+          - change default pcm devices to 1 in alsa.conf
+	  - modify rc.local to auto start
+
+installer
+    - create an installer

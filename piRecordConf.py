@@ -4,14 +4,10 @@
 # Copyright 2019. All Rights Reserved.
 #   11/24/19    jhnatt    original
 #   11/26/19    jhnatt    modify for Python 3
+#   11/27/19    jhnatt    add performance tuning and user preferences
 ###############################################################################
 
-import platform
-if platform.system() == 'Linux':
-    import alsaaudio
-#else:
-    #TODO: support for other platforms
-
+import alsaaudio
 import logging
 import configparser
 
@@ -31,13 +27,23 @@ outputDir = "../Recordings"
 fileFormatStr = "%Y%m%d_%H%M%S"
 fileTypeExt = ".wav"
 
+
 #global record configuration variables.  Initialize with default values.
 recDevice = "default"    
 recChannels = 1
 recRate = 44100
-recFormat = alsaaudio.PCM_FORMAT_U8
+recFormat = alsaaudio.PCM_FORMAT_S16_LE
 recPeriodSize = 160
 recSampleWidth = 2
+
+#Performance tuning
+engineLoopPd = 0.001    
+swDebounceTime = 0.020
+
+#User preferences 
+idleSeconds = 300.000  
+auditionTime = 3.00
+
 
 #Config item display lists (exported to main which handles settings)
 cfgItemDispList = ["Dev", "Chn", "Rat", "Fmt", "Per", "Wid"]
@@ -64,6 +70,9 @@ recConfig = configparser.RawConfigParser()
 #   0
 ###############################################################################
 def printConfig():
+    global recConfig
+    global recDevice, recChannels, recRate, recFormat, recPeriodSize, recSampleWidth
+    global swDebounceTime, engineLoopPd, idleSeconds, auditionTime
     print ("Current Recording Config:")
     print ("  recDevice = ", recDevice)
     print ("  recChannels = ", recChannels)
@@ -71,6 +80,13 @@ def printConfig():
     print ("  recFormat = ", recFormat)
     print ("  recPeriodSize = ", recPeriodSize)
     print ("  recSampleWidth = ", recSampleWidth)
+    print ("Performance Tuning:")
+    print ("  swDebounceTime: ", swDebounceTime)
+    print ("  engineLoopPd: ", engineLoopPd)
+    print ("User Preferences: ")
+    print ("  idleSeconds", idleSeconds)
+    print ("  auditionTime", auditionTime)
+    print (" ")
     print ("to change a setting, edit piRecord.cfg and restart piRecord")
     return 0
 
@@ -106,9 +122,45 @@ def getRecDevice():
 #   the resulting constant.
 ###############################################################################
 def getRecFormat(numBits, signed, byteOrder):
-    #default to Signed 16 bit Little-endian
-    fmt = alsaaudio.PCM_FORMAT_S16_LE
-    #TODO: actually build the format value based on parameters
+    if signed == False:
+        if byteOrder == 'BE':
+            if numBits == 8:
+                fmt = alsaaudio.PCM_FORMAT_U8
+            elif numBits == 24:
+                fmt = alsaaudio.PCM_FORMAT_U24_BE
+            elif numBits == 32:
+                fmt = alsaaudio.PCM_FORMAT_U32_BE
+            else:
+                fmt = alsaaudio.PCM_FORMAT_U16_BE
+        else:
+            if numBits == 8:
+                fmt = alsaaudio.PCM_FORMAT_U8
+            elif numBits == 24:
+                fmt = alsaaudio.PCM_FORMAT_U24_LE
+            elif numBits == 32:
+                fmt = alsaaudio.PCM_FORMAT_U32_LE
+            else:
+                fmt = alsaaudio.PCM_FORMAT_U16_LE
+    else:
+        if byteOrder == 'BE':
+            if numBits == 8:
+                fmt = alsaaudio.PCM_FORMAT_S8
+            elif numBits == 24:
+                fmt = alsaaudio.PCM_FORMAT_S24_BE
+            elif numBits == 32:
+                fmt = alsaaudio.PCM_FORMAT_S32_BE
+            else:
+                fmt = alsaaudio.PCM_FORMAT_S16_BE
+        else:
+            if numBits == 8:
+                fmt = alsaaudio.PCM_FORMAT_S8
+            elif numBits == 24:
+                fmt = alsaaudio.PCM_FORMAT_S24_LE
+            elif numBits == 32:
+                fmt = alsaaudio.PCM_FORMAT_S32_LE
+            else:
+                fmt = alsaaudio.PCM_FORMAT_S16_LE
+    
     return fmt
 
 ###############################################################################
@@ -124,14 +176,26 @@ def getRecFormat(numBits, signed, byteOrder):
 def getRecDevConfig():
     global recConfig
     global recDevice, recChannels, recRate, recFormat, recPeriodSize, recSampleWidth
+    global swDebounceTime, engineLoopPd, idleSeconds, auditionTime
 
     recConfig.read('piRecord.cfg')
+
+    #get recording configuration
     recDevice = recConfig.get('recDevice', 'devName')
     recChannels = recConfig.getint('recDevice', 'numChan')
     recRate = recConfig.getint('recDevice', 'rate')
     recFormat = getRecFormat(recConfig.getint('recDevice', 'numBits'), recConfig.getboolean('recDevice', 'signed'), recConfig.get('recDevice', 'byteOrder'))
     recPeriodSize = recConfig.getint('recDevice', 'periodSize')
     recSampleWidth = recConfig.getint('recDevice', 'sampleWidth')
+    
+    #get performance tunings:
+    swDebounceTime = recConfig.getfloat('performanceTuning', 'swDebounceTime')
+    engineLoopPd = recConfig.getfloat('performanceTuning', 'engineLoopPd')
+
+    #get user preferences:
+    idleSeconds = recConfig.getfloat('userPreferences', 'idleSeconds')
+    auditionTime = recConfig.getfloat('userPreferences', 'auditionTime')
+
     return 0
 
 
