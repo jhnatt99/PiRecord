@@ -4,16 +4,12 @@
 # Copyright 2019. All Rights Reserved.
 # Version History:
 #   11/24/19  jhnatt    original
+#   11/26/19  jhnatt    modify for Python 3
+#   11/26/19  jhnatt    configurable engine loop time, other changes
 ###############################################################################
 
 import multiprocessing
-
-import platform
-if platform.system() == 'Linux':
-    import alsaaudio
-#else:
-    #TODO: support other platfomrs
-    
+import alsaaudio
 import piRecordConf
 import piRecordUtils
 import time
@@ -23,11 +19,20 @@ import wave
 REQ_REC_START = 1
 REQ_REC_STOP = 2
 REQ_REC_CONT = 3
+#TODO: support playback
+REQ_PLY_START = 4
+REQ_PLY_STOP = 5
+REQ_PLY_CONT = 6
 
 # Initialize global variables
 curr_filename = "$"
 recording = False
 pEngine = None
+recPCM = None
+
+# Debug vars
+data_cnt = 0
+nodata_cnt = 0
 
 ###############################################################################
 # Function Name:
@@ -44,14 +49,14 @@ def start_record():
     global curr_filename
     global recording
     status = 0
-    print "\n**NEW RECORDING**"
-    print "start_record() called, recording = ", recording
+    print ("\n**NEW RECORDING**")
+    print ("start_record() called, recording = ", recording)
     if recording == False:
         curr_filename = piRecordUtils.getNextFilename()
         piRecordUtils.setCurrentFilename(curr_filename)
         if status == 0:  #no error
             pQueue.put(REQ_REC_START)
-            print "REQ_REC_START sent."
+            print ("REQ_REC_START sent.")
             recording = True
     return status == 0
 
@@ -67,17 +72,63 @@ def start_record():
 #   0 = success else error
 ###############################################################################
 def stop_record():
-    global curr_filename
     global recording
     status = 0
-    print "stop_record() called, recording = ", recording
+    print ("stop_record() called, recording = "), recording
     if recording == True:
-        piRecordUtils.setCurrentFilename("$")
-        curr_filename = "$"
         pQueue.put(REQ_REC_STOP)
-        print "REQ_REC_STOP sent" 
+        print ("REQ_REC_STOP sent" )
         recording = False
     return status == 0
+
+###############################################################################
+# Function Name:
+#   audition
+# Description:
+#   plays a short excerpt from the last recording made
+# Parameters:
+#   duration - length of excerpt in seconds
+# Return value: 
+#   0
+###############################################################################
+def audition(duration):
+
+    if curr_filename == '$':
+        return -1
+    f = wave.open(curr_filename, 'rb')
+    device = alsaaudio.PCM(device=piRecordConf.getRecDevice())
+    # Set attributes
+    device.setchannels(f.getnchannels())
+    device.setrate(f.getframerate())
+
+    # 8bit is unsigned in wav files
+    if f.getsampwidth() == 1:
+        device.setformat(alsaaudio.PCM_FORMAT_U8)
+    # Otherwise we assume signed data, little endian
+    elif f.getsampwidth() == 2:
+        device.setformat(alsaaudio.PCM_FORMAT_S16_LE)
+    elif f.getsampwidth() == 3:
+        device.setformat(alsaaudio.PCM_FORMAT_S24_LE)
+    elif f.getsampwidth() == 4:
+        device.setformat(alsaaudio.PCM_FORMAT_S32_LE)
+    else:
+        print ("Playback error: unsupported format")
+        return (-1)
+    
+    periodsize = int(f.getframerate() / 8)
+
+    device.setperiodsize(periodsize)
+
+    elapsed_time = 0.000
+    start_time = time.time();
+    data = f.readframes(periodsize)
+    while data and (elapsed_time < duration):
+        device.write(data)
+        data = f.readframes(periodsize)
+        elapsed_time = time.time() - start_time
+    f.close()
+
+    return 0
 
 ###############################################################################
 # Function Name:
@@ -107,12 +158,13 @@ def stop_process():
 #   0
 ###############################################################################   
 def piRecordEngine():
+    global data_cnt, nodata_cnt
+    global recPCM
 
     # initialize local variables
     curr_fd = 0
-    sleep_time = 0.001
+    sleep_time = piRecordConf.engineLoopPd
     cnt = 0
-    recPCM = None
     rec_in_progress = False
 
     # enter loop...    
@@ -123,18 +175,21 @@ def piRecordEngine():
 
         # handle start record requests:       
         if req == REQ_REC_START:
-            print "REQ_REC_START received, calling do_record_start"
+            print ("REQ_REC_START received, calling do_record_start")
             curr_fd = handle_record_start_req()
-            if recPCM == None:
-                recPCM = init_record_input()
+            init_record_input()
             rec_in_progress = True
+            data_cnt = 0
+            nodata_cnt = 0
             pQueue.put(REQ_REC_CONT)
 
         # hanlde stop record requests:
         elif req == REQ_REC_STOP:
-            print "REQ_STOP received, calling do_record_stop"
+            print ("REQ_STOP received, calling do_record_stop")
             handle_record_stop_req(curr_fd)
             rec_in_progress = False
+            print ("data_cnt = ", data_cnt)
+            print ("nodata_cnt = ", nodata_cnt)
 
         # handle continue record requests:
         elif req == REQ_REC_CONT:
@@ -145,9 +200,9 @@ def piRecordEngine():
                 cnt = cnt + 1
                 if cnt >= 500:
                     cnt = 0
-                    print "....."
+                    print (".....")
             else:
-                print "Recording has stopped..."
+                print ("Recording has stopped...")
     
     return 0
 
@@ -155,26 +210,29 @@ def piRecordEngine():
 # Function Name:
 #   init_record_input
 # Description:
-#   creates a new recoridng input object
+#   creates a new recoridng input object if not already created, then sets its
+#   attributes according to the configuration
 # Parameters:
 #   none
 # Return value: 
-#   the new recording input object
+#   0
 ###############################################################################
 def init_record_input():
+    global recPCM
     device = piRecordConf.recDevice
     
     # create the recording input object
-    inp = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NONBLOCK, device=piRecordConf.getRecDevice())
+    if recPCM == None:
+        recPCM = alsaaudio.PCM(alsaaudio.PCM_CAPTURE, alsaaudio.PCM_NONBLOCK, device=piRecordConf.getRecDevice())
 
     # Set attributes based on the current recording configuration
-    inp.setchannels(piRecordConf.recChannels)
-    inp.setrate(piRecordConf.recRate)
-    inp.setformat(piRecordConf.recFormat)
-    inp.setperiodsize(piRecordConf.recPeriodSize)
+    recPCM.setchannels(piRecordConf.recChannels)
+    recPCM.setrate(piRecordConf.recRate)
+    recPCM.setformat(piRecordConf.recFormat)
+    recPCM.setperiodsize(piRecordConf.recPeriodSize)
 
     #return the recording input object
-    return inp
+    return 0
 
 ###############################################################################
 # Function Name:
@@ -188,7 +246,7 @@ def init_record_input():
 ###############################################################################
 def handle_record_start_req():
     curr_fn = piRecordUtils.getCurrentFilename()
-    print "handle_record_start_req: open file", curr_fn, "here..."
+    print ("handle_record_start_req: open file", curr_fn, "here...")
     fd = wave.open(curr_fn, 'wb')
     fd.setnchannels(piRecordConf.recChannels)
     fd.setsampwidth(piRecordConf.recSampleWidth)
@@ -199,15 +257,15 @@ def handle_record_start_req():
 # Function Name:
 #   handle_record_stop_req
 # Description:
-#   handles the record stop request by writing null char and closing the file
+#   handles the record stop request by writing null and closing the file
 # Parameters:
 #   fd - file descriptor of the currenly open wave file
 # Return value: 
 #   0
 ###############################################################################
 def handle_record_stop_req(fd):
-    print "handle_record_stop_req: close file here..."
-    fd.writeframes('')
+    print ("handle_record_stop_req: close file here...")
+    fd.writeframes(''.encode())
     fd.close()
     return 0
 
@@ -224,9 +282,13 @@ def handle_record_stop_req(fd):
 #   0
 ###############################################################################
 def handle_record_continue_req(fd, inp):
+    global data_cnt, nodata_cnt
     lngth, data = inp.read()
     if lngth:
         fd.writeframesraw(data)
+        data_cnt += 1
+    else:
+        nodata_cnt += 1
     return 0
 
 ###############################################################################
